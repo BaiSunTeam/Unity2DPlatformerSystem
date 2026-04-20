@@ -57,6 +57,10 @@ Assets/
  Project/Scripts/
   Input/InputReader.cs
   Player/PlayerController.cs
+  StateMachine/
+   BaseState.cs
+   IState.cs
+  Utils/CountdownTimer.cs
  Project/Settings/InputSystem_Actions.cs
 Temp/obj/Assembly-CSharp/.NETStandard,Version=v2.1.AssemblyAttributes.cs
 

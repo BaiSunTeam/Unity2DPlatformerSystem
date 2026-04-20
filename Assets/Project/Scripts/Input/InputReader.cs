@@ -10,8 +10,6 @@ public class InputReader : ScriptableObject, IPlayerActions
     public event UnityAction<bool> Jump = delegate { };
     public event UnityAction Attack = delegate { };
 
-    public Vector2 Direction => inputActions.Player.Move.ReadValue<Vector2>();
-
     private InputSystem_Actions inputActions;
 
     void OnEnable()
