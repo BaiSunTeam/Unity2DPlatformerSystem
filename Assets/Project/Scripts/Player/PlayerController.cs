@@ -16,7 +16,6 @@ public class PlayerController : MonoBehaviour
     [Header("Ground Check")]
     public Transform groundCheckTransform;
     public Vector2 groundCheckSize;
-
     public LayerMask groundLayer;
 
     [Header("Jump")]
@@ -39,10 +38,7 @@ public class PlayerController : MonoBehaviour
     private Vector2 moveInput;
     public bool isGrounded;
     private bool isWallSliding;
-    private bool isTouchingWallLeft;
-    private bool isTouchingWallRight;
-    private int wallDirection;
-    private bool jumpQueued;
+    private int wallContactDirection;
     private bool jumpReleased;
 
     // Timers
@@ -76,60 +72,7 @@ public class PlayerController : MonoBehaviour
     {
         UpdateGrounded();
         UpdateWallContact();
-        UpdateTimers();
-
-        if ((isGrounded || coyoteTimer.IsRunning) && jumpBufferTimer.IsRunning)
-            jumpQueued = true;
-    }
-
-    private void UpdateTimers()
-    {
-        coyoteTimer.Tick(Time.deltaTime);
-        jumpBufferTimer.Tick(Time.deltaTime);
-        wallJumpInputLockTimer.Tick(Time.deltaTime);
-    }
-
-    private void UpdateGrounded()
-    {
-        bool wasGrounded = isGrounded;
-        isGrounded = Physics2D.OverlapBox(groundCheckTransform.position, groundCheckSize, 0f, groundLayer);
-
-        if (wasGrounded && !isGrounded) coyoteTimer.Start();
-        if (!wasGrounded && isGrounded)
-        {
-            coyoteTimer.Stop();
-        }
-    }
-
-    private void UpdateWallContact()
-    {
-        isTouchingWallLeft = Physics2D.OverlapBox(wallCheckLeft.position, wallCheckSize, 0f, groundLayer);
-        isTouchingWallRight = Physics2D.OverlapBox(wallCheckRight.position, wallCheckSize, 0f, groundLayer);
-
-        bool pushingIntoWall = (isTouchingWallLeft && moveInput.x < -0.01f)
-                            || (isTouchingWallRight && moveInput.x > 0.01f);
-
-        isWallSliding = !isGrounded && pushingIntoWall;
-
-        if (isWallSliding)
-            wallDirection = isTouchingWallLeft ? -1 : 1;
-    }
-
-
-    private void OnMove(Vector2 dir) => moveInput = dir;
-
-    private void OnJump(bool pressed)
-    {
-        if (pressed)
-        {
-            jumpBufferTimer.Start();
-            jumpReleased = false;
-        }
-        else
-        {
-            jumpBufferTimer.Stop();
-            jumpReleased = true;
-        }
+        TickTimers();
     }
 
     void FixedUpdate()
@@ -140,36 +83,91 @@ public class PlayerController : MonoBehaviour
         HandleWallSlide();
     }
 
+    private void UpdateGrounded()
+    {
+        // store previous grounded state
+        bool wasGrounded = isGrounded;
+        // test if current frame is grounded
+        isGrounded = Physics2D.OverlapBox(groundCheckTransform.position, groundCheckSize, 0f, groundLayer);
+
+        // start and stop coyote time depending on the grounded state
+        if (wasGrounded && !isGrounded) coyoteTimer.Start();
+        if (!wasGrounded && isGrounded) coyoteTimer.Stop();
+    }
+
+    private void UpdateWallContact()
+    {
+        bool touchingLeft = Physics2D.OverlapBox(wallCheckLeft.position, wallCheckSize, 0f, groundLayer);
+        bool touchingRight = Physics2D.OverlapBox(wallCheckRight.position, wallCheckSize, 0f, groundLayer);
+
+        // get the direction of wall contact -1 for left and 1 for right and 0 if not touching any walls
+        wallContactDirection = touchingLeft ? -1 : touchingRight ? 1 : 0;
+
+        // wall sliding only happens if not on the ground and player is actively pushing against the wall
+        isWallSliding = !isGrounded                                 // is in the air
+            && wallContactDirection != 0                            // touching a wall
+            && moveInput.x == wallContactDirection;     // pushing against wall
+    }
+
+    private void TickTimers()
+    {
+        coyoteTimer.Tick(Time.deltaTime);
+        jumpBufferTimer.Tick(Time.deltaTime);
+        wallJumpInputLockTimer.Tick(Time.deltaTime);
+    }
+
+    private void OnMove(Vector2 dir) => moveInput = dir;
+
+    private void OnJump(bool pressed)
+    {
+        if (pressed)
+        {
+            jumpBufferTimer.Start(); 
+            jumpReleased = false;
+        }
+        else
+        {
+            jumpBufferTimer.Stop(); 
+            jumpReleased = true;
+        }
+    }
+
     private void HandleMovement()
     {
+        // movement code used from the following video: https://www.youtube.com/watch?v=KbtcEVCM7bw
         float targetSpeed = wallJumpInputLockTimer.IsRunning ? 0f : moveInput.x * moveSpeed;
         float speedDif = targetSpeed - rb.linearVelocityX;
         float accelRate = Mathf.Abs(targetSpeed) > 0.01f ? acceleration : decceleration;
         float movement = Mathf.Pow(Mathf.Abs(speedDif) * accelRate, velPower) * Mathf.Sign(speedDif);
 
-        if (!isGrounded)
-            movement *= airControlMultiplier;
+        // reduces lateral movement if player is in the air
+        if (!isGrounded) movement *= airControlMultiplier;
 
         rb.AddForce(movement * Vector2.right);
     }
 
     private void HandleJump()
     {
-        if (jumpBufferTimer.IsRunning && isWallSliding)
+        if (!jumpBufferTimer.IsRunning) return;
+
+        if (isWallSliding)
         {
+            // applies an impulse opposite of wall contact direction
+            // rb.linearVelocity = Vector2.zero;
             rb.linearVelocityY = 0f;
-            rb.AddForce(new Vector2(-wallDirection * wallJumpForceX, wallJumpForceY), ForceMode2D.Impulse);
+            rb.AddForce(new Vector2(-wallContactDirection * wallJumpForceX, wallJumpForceY), ForceMode2D.Impulse);
             jumpReleased = false;
             jumpBufferTimer.Stop();
             wallJumpInputLockTimer.Start();
             return;
         }
 
-        if (jumpQueued)
+        // jump on the ground
+        if (isGrounded || coyoteTimer.IsRunning)
         {
+            // applies an impulse up
             rb.linearVelocityY = 0f;
             rb.AddForce(Vector2.up * jumpForce, ForceMode2D.Impulse);
-            jumpQueued = false;
             jumpReleased = false;
             jumpBufferTimer.Stop();
             coyoteTimer.Stop();
@@ -180,10 +178,12 @@ public class PlayerController : MonoBehaviour
     {
         if (isWallSliding) return;
 
+        // increase gravity when falling (i.e. when y velocity is negative)
         if (rb.linearVelocityY < 0f)
         {
             rb.AddForce((fallingGravityMultiplier - 1f) * Physics2D.gravity.y * rb.mass * Vector2.up);
         }
+        // increase gravity when jump is released early to cut gravity
         else if (rb.linearVelocityY > 0f && jumpReleased)
         {
             rb.AddForce((jumpCutGravityMultiplier - 1f) * Physics2D.gravity.y * rb.mass * Vector2.up);
@@ -203,9 +203,7 @@ public class PlayerController : MonoBehaviour
             Gizmos.DrawWireCube(groundCheckTransform.position, groundCheckSize);
 
         Gizmos.color = Color.blue;
-        if (wallCheckLeft != null)
-            Gizmos.DrawWireCube(wallCheckLeft.position, wallCheckSize);
-        if (wallCheckRight != null)
-            Gizmos.DrawWireCube(wallCheckRight.position, wallCheckSize);
+        if (wallCheckLeft != null) Gizmos.DrawWireCube(wallCheckLeft.position, wallCheckSize);
+        if (wallCheckRight != null) Gizmos.DrawWireCube(wallCheckRight.position, wallCheckSize);
     }
 }
