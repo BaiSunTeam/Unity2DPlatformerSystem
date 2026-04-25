@@ -58,7 +58,6 @@ Assets/
   StateMachine/
    BaseState.cs
    IState.cs
-  Utils/CountdownTimer.cs
  Project/Settings/InputSystem_Actions.cs
 Temp/obj/Assembly-CSharp/.NETStandard,Version=v2.1.AssemblyAttributes.cs
 
@@ -332,6 +331,7 @@ Library/PackageCache/
  com.unity.nuget.mono-cecil@ecb9724e46ff/Mono.Cecil.dll
  com.unity.visualscripting@eb6004dcc707/Runtime/VisualScripting.Flow/Dependencies/NCalc/Unity.VisualScripting.Antlr3.Runtime.dll
 Library/ScriptAssemblies/
+ ImprovedTimers.dll
  PPv2URPConverters.dll
  PsdPlugin.dll
  Unity.2D.Animation.Editor.dll
@@ -353,6 +353,8 @@ Library/ScriptAssemblies/
  Unity.2D.Tooling.Editor.dll
  Unity.Burst.dll
  Unity.Burst.Editor.dll
+ Unity.Cinemachine.dll
+ Unity.Cinemachine.Editor.dll
  Unity.Collections.dll
  Unity.Collections.Editor.dll
  Unity.InputSystem.dll
@@ -382,7 +384,10 @@ Library/ScriptAssemblies/
  Unity.RenderPipelines.Universal.Shaders.dll
  Unity.Rider.Editor.dll
  Unity.Searcher.Editor.dll
+ Unity.Settings.Editor.dll
  Unity.ShaderGraph.Editor.dll
+ Unity.Splines.dll
+ Unity.Splines.Editor.dll
  Unity.TextMeshPro.dll
  Unity.TextMeshPro.Editor.dll
  Unity.Timeline.dll
@@ -406,7 +411,7 @@ Library/ScriptAssemblies/
  Unity.Properties.SourceGenerator.dll
  Unity.SourceGenerators.dll
  Unity.UIToolkit.SourceGenerator.dll
-../../../.vscode/extensions/visualstudiotoolsforunity.vstuc-1.2.1/Analyzers/Microsoft.Unity.Analyzers.dll
+../../../.vscode/extensions/visualstudiotoolsforunity.vstuc-1.2.2/Analyzers/Microsoft.Unity.Analyzers.dll
 
 [analyzerConfigFiles]
 Temp/obj/Assembly-CSharp/Assembly-CSharp.GeneratedMSBuildEditorConfig.editorconfig

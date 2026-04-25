@@ -1,3 +1,4 @@
+using ImprovedTimers;
 using UnityEngine;
 
 [RequireComponent(typeof(Rigidbody2D))]
@@ -72,7 +73,6 @@ public class PlayerController : MonoBehaviour
     {
         UpdateGrounded();
         UpdateWallContact();
-        TickTimers();
     }
 
     void FixedUpdate()
@@ -107,13 +107,6 @@ public class PlayerController : MonoBehaviour
         isWallSliding = !isGrounded                                 // is in the air
             && wallContactDirection != 0                            // touching a wall
             && moveInput.x == wallContactDirection;     // pushing against wall
-    }
-
-    private void TickTimers()
-    {
-        coyoteTimer.Tick(Time.deltaTime);
-        jumpBufferTimer.Tick(Time.deltaTime);
-        wallJumpInputLockTimer.Tick(Time.deltaTime);
     }
 
     private void OnMove(Vector2 dir) => moveInput = dir;
@@ -153,8 +146,8 @@ public class PlayerController : MonoBehaviour
         if (isWallSliding)
         {
             // applies an impulse opposite of wall contact direction
-            // rb.linearVelocity = Vector2.zero;
-            rb.linearVelocityY = 0f;
+            rb.linearVelocity = Vector2.zero;
+            // rb.linearVelocityY = 0f;
             rb.AddForce(new Vector2(-wallContactDirection * wallJumpForceX, wallJumpForceY), ForceMode2D.Impulse);
             jumpReleased = false;
             jumpBufferTimer.Stop();
@@ -183,7 +176,7 @@ public class PlayerController : MonoBehaviour
         {
             rb.AddForce((fallingGravityMultiplier - 1f) * Physics2D.gravity.y * rb.mass * Vector2.up);
         }
-        // increase gravity when jump is released early to cut gravity
+        // increase gravity when jump is released early to cut the jump
         else if (rb.linearVelocityY > 0f && jumpReleased)
         {
             rb.AddForce((jumpCutGravityMultiplier - 1f) * Physics2D.gravity.y * rb.mass * Vector2.up);
