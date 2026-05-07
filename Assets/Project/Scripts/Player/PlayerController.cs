@@ -35,17 +35,29 @@ public class PlayerController : MonoBehaviour
     public float wallJumpForceY;
     public float wallJumpInputLockTime;
 
+    [Header("Dash")]
+    public float dashForce;
+    public float dashDuration;
+    public float dashCooldown;
+    public int maxDashCharges;
+    public bool canAirDash;
+
     // State
     private Vector2 moveInput;
     public bool isGrounded;
     private bool isWallSliding;
     private int wallContactDirection;
     private bool jumpReleased;
+    private int remainingDashCharges;
+    private bool isDashing;
+    private Vector2 dashDirection;
 
     // Timers
     private CountdownTimer coyoteTimer;
     private CountdownTimer jumpBufferTimer;
     private CountdownTimer wallJumpInputLockTimer;
+    private CountdownTimer dashDurationTimer;
+    private CountdownTimer dashCooldownTimer;
 
     void Awake()
     {
@@ -55,18 +67,35 @@ public class PlayerController : MonoBehaviour
         coyoteTimer = new CountdownTimer(maxCoyoteTime);
         jumpBufferTimer = new CountdownTimer(maxJumpBufferTime);
         wallJumpInputLockTimer = new CountdownTimer(wallJumpInputLockTime);
+
+        dashDurationTimer = new CountdownTimer(dashDuration);
+        dashCooldownTimer = new CountdownTimer(dashCooldown);
+
+        dashDurationTimer.OnTimerStop += () =>
+        {
+            isDashing = false;
+            rb.gravityScale = 1f; // restore gravity after dash ends
+        };
+
+        dashCooldownTimer.OnTimerStop += () =>
+        {
+            if (remainingDashCharges < maxDashCharges)
+                remainingDashCharges++;
+        };
     }
 
     void OnEnable()
     {
         input.Move += OnMove;
         input.Jump += OnJump;
+        input.Dash += OnDash;
     }
 
     void OnDisable()
     {
         input.Move -= OnMove;
         input.Jump -= OnJump;
+        input.Dash -= OnDash;
     }
 
     void Update()
@@ -92,7 +121,11 @@ public class PlayerController : MonoBehaviour
 
         // start and stop coyote time depending on the grounded state
         if (wasGrounded && !isGrounded) coyoteTimer.Start();
-        if (!wasGrounded && isGrounded) coyoteTimer.Stop();
+        if (!wasGrounded && isGrounded)
+        {
+            remainingDashCharges = maxDashCharges; // refill on landing
+            coyoteTimer.Stop();
+        }
     }
 
     private void UpdateWallContact()
@@ -115,18 +148,41 @@ public class PlayerController : MonoBehaviour
     {
         if (pressed)
         {
-            jumpBufferTimer.Start(); 
+            jumpBufferTimer.Start();
             jumpReleased = false;
         }
         else
         {
-            jumpBufferTimer.Stop(); 
+            jumpBufferTimer.Stop();
             jumpReleased = true;
         }
     }
 
+    private void OnDash()
+    {
+        Debug.Log("dash");
+        bool airDashAllowed = canAirDash || isGrounded;
+        if (remainingDashCharges <= 0 || isDashing || !airDashAllowed) return;
+
+        isDashing = true;
+        remainingDashCharges--;
+
+        // Dash in the direction of movement input, or facing direction if idle
+        dashDirection = moveInput.sqrMagnitude > 0.01f
+            ? moveInput.normalized
+            : new Vector2(wallContactDirection != 0 ? -wallContactDirection : 1f, 0f);
+
+        rb.linearVelocity = Vector2.zero;
+        rb.gravityScale = 0f;
+        rb.AddForce(dashDirection * dashForce, ForceMode2D.Impulse);
+
+        dashDurationTimer.Start();
+        dashCooldownTimer.Start();
+    }
+
     private void HandleMovement()
     {
+        if (isDashing) return;
         // movement code used from the following video: https://www.youtube.com/watch?v=KbtcEVCM7bw
         float targetSpeed = wallJumpInputLockTimer.IsRunning ? 0f : moveInput.x * moveSpeed;
         float speedDif = targetSpeed - rb.linearVelocityX;
@@ -169,7 +225,7 @@ public class PlayerController : MonoBehaviour
 
     private void HandleGravity()
     {
-        if (isWallSliding) return;
+        if (isWallSliding || isDashing) return;
 
         // increase gravity when falling (i.e. when y velocity is negative)
         if (rb.linearVelocityY < 0f)
@@ -185,6 +241,8 @@ public class PlayerController : MonoBehaviour
 
     private void HandleWallSlide()
     {
+        if (isDashing) return;
+
         if (isWallSliding && rb.linearVelocityY < wallSlideSpeed)
             rb.linearVelocityY = wallSlideSpeed;
     }

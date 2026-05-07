@@ -9,6 +9,7 @@ public class InputReader : ScriptableObject, IPlayerActions
     public event UnityAction<Vector2> Move = delegate { };
     public event UnityAction<bool> Jump = delegate { };
     public event UnityAction Attack = delegate { };
+    public event UnityAction Dash = delegate { };
 
     private InputSystem_Actions inputActions;
 
@@ -55,6 +56,14 @@ public class InputReader : ScriptableObject, IPlayerActions
         }
     }
 
+    void IPlayerActions.OnSprint(InputAction.CallbackContext context)
+    {
+        if (context.started)
+        {
+            Dash.Invoke();
+        }
+    }
+
     // unimplemented
     void IPlayerActions.OnCrouch(InputAction.CallbackContext context)
     {
@@ -77,11 +86,6 @@ public class InputReader : ScriptableObject, IPlayerActions
     }
 
     void IPlayerActions.OnPrevious(InputAction.CallbackContext context)
-    {
-        // noop
-    }
-
-    void IPlayerActions.OnSprint(InputAction.CallbackContext context)
     {
         // noop
     }

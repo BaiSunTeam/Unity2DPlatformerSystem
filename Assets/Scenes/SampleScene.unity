@@ -564,8 +564,8 @@ Transform:
   m_GameObject: {fileID: 1056053580}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 10.65, y: 0.7, z: 0}
-  m_LocalScale: {x: 1.1583513, y: 11.151563, z: 1}
+  m_LocalPosition: {x: 10.65, y: 6.2904, z: 0}
+  m_LocalScale: {x: 1.1583513, y: 22.332119, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 0}
@@ -1668,8 +1668,8 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::PlayerController
   input: {fileID: 11400000, guid: e649c289d50116f4498e6f73c58e4d22, type: 2}
   moveSpeed: 7
-  acceleration: 7
-  decceleration: 7
+  acceleration: 10
+  decceleration: 10
   velPower: 0.9
   airControlMultiplier: 0.275
   groundCheckTransform: {fileID: 1301604158}
@@ -1677,18 +1677,23 @@ MonoBehaviour:
   groundLayer:
     serializedVersion: 2
     m_Bits: 8
-  jumpForce: 7
-  fallingGravityMultiplier: 1.4
-  jumpCutGravityMultiplier: 1.5
+  jumpForce: 12
+  fallingGravityMultiplier: 1.5
+  jumpCutGravityMultiplier: 3
   maxCoyoteTime: 0.1
   maxJumpBufferTime: 0.1
   wallCheckLeft: {fileID: 1689171667}
   wallCheckRight: {fileID: 656216234}
   wallCheckSize: {x: 0.05, y: 0.5}
   wallSlideSpeed: -2
-  wallJumpForceX: 5
-  wallJumpForceY: 7
+  wallJumpForceX: 8
+  wallJumpForceY: 12
   wallJumpInputLockTime: 0.2
+  dashForce: 16
+  dashDuration: 0.2
+  dashCooldown: 1
+  maxDashCharges: 1
+  canAirDash: 1
   isGrounded: 0
 --- !u!50 &2091644944
 Rigidbody2D:
