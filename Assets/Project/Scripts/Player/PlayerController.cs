@@ -1,87 +1,218 @@
-using ImprovedTimers;
 using UnityEngine;
+using ImprovedTimers;
+using KBCore.Refs;
 
-[RequireComponent(typeof(Rigidbody2D))]
+[RequireComponent(typeof(Rigidbody2D), typeof(PlatformCollisionChecker), typeof(Animator))]
 public class PlayerController : MonoBehaviour
 {
-    public InputReader input;
-    private Rigidbody2D rb;
+    [Header("References")]
+    [SerializeField, Self] Rigidbody2D rb;
+    [SerializeField, Self] PlatformCollisionChecker collisionChecker;
+    [SerializeField, Self] Animator animator;
+    [SerializeField] InputReader input;
 
-    [Header("Movement")]
-    public float moveSpeed;
-    public float acceleration;
-    public float decceleration;
-    public float velPower;
-    public float airControlMultiplier;
+    [Header("Movement Settings")]
+    [SerializeField] float moveSpeed = 7f;
+    [SerializeField] float acceleration = 10f;
+    [SerializeField] float decceleration = 10f;
+    [SerializeField] float velPower = 0.9f;
 
-    [Header("Ground Check")]
-    public Transform groundCheckTransform;
-    public Vector2 groundCheckSize;
-    public LayerMask groundLayer;
+    [Header("Jump Settings")]
+    [SerializeField] float maxJumpBufferTime = 0.125f;
+    [SerializeField] float jumpForce = 10f;
+    [SerializeField] float gravityMultiplier = 2f;
+    [SerializeField] float airControlMultiplier = 0.275f;
+    [SerializeField] float maxRiseSpeed = 12f;
+    [SerializeField] float maxFallSpeed = 20f;
+    [SerializeField] float jumpAnimationPowerCurve = 0.4f;
 
-    [Header("Jump")]
-    public float jumpForce;
-    public float fallingGravityMultiplier;
-    public float jumpCutGravityMultiplier;
-    public float maxCoyoteTime;
-    public float maxJumpBufferTime;
+    [Header("Wall Settings")]
+    [SerializeField] float wallSlideSpeed = 2f;
 
-    [Header("Wall Interaction")]
-    public Transform wallCheckLeft;
-    public Transform wallCheckRight;
-    public Vector2 wallCheckSize;
-    public float wallSlideSpeed;
-    public float wallJumpForceX;
-    public float wallJumpForceY;
-    public float wallJumpInputLockTime;
+    [Header("Dash Settings")]
+    [SerializeField] float dashForce = 10f;
+    [SerializeField] float dashDuration = 0.25f;
+    [SerializeField] float dashCooldown = 2f;
 
-    [Header("Dash")]
-    public float dashForce;
-    public float dashDuration;
-    public float dashCooldown;
-    public int maxDashCharges;
-    public bool canAirDash;
-
-    // State
-    private Vector2 moveInput;
-    public bool isGrounded;
-    private bool isWallSliding;
-    private int wallContactDirection;
+    // variables
+    private Vector2 movement;
     private bool jumpReleased;
-    private int remainingDashCharges;
-    private bool isDashing;
-    private Vector2 dashDirection;
+    private float lastMovementX = 1;
 
-    // Timers
-    private CountdownTimer coyoteTimer;
+    // timers
     private CountdownTimer jumpBufferTimer;
-    private CountdownTimer wallJumpInputLockTimer;
-    private CountdownTimer dashDurationTimer;
+    private CountdownTimer coyoteTimer;
+    private CountdownTimer dashTimer;
     private CountdownTimer dashCooldownTimer;
+
+    // State Machine
+    private StateMachine stateMachine;
+    private static readonly int BlendSpeed = Animator.StringToHash("Speed");
 
     void Awake()
     {
-        rb = GetComponent<Rigidbody2D>();
         rb.freezeRotation = true;
+        SetUpTimers();
+        SetUpStateMachine();
+    }
 
-        coyoteTimer = new CountdownTimer(maxCoyoteTime);
+    void SetUpTimers()
+    {
         jumpBufferTimer = new CountdownTimer(maxJumpBufferTime);
-        wallJumpInputLockTimer = new CountdownTimer(wallJumpInputLockTime);
-
-        dashDurationTimer = new CountdownTimer(dashDuration);
+        coyoteTimer = new CountdownTimer(maxJumpBufferTime);
+        dashTimer = new CountdownTimer(dashDuration);
         dashCooldownTimer = new CountdownTimer(dashCooldown);
-
-        dashDurationTimer.OnTimerStop += () =>
-        {
-            isDashing = false;
-            rb.gravityScale = 1f; // restore gravity after dash ends
+    
+        dashTimer.OnTimerStop += () => {
+            rb.gravityScale = 1f; 
+            dashCooldownTimer.Start();
         };
+    }
 
-        dashCooldownTimer.OnTimerStop += () =>
+    void SetUpStateMachine()
+    {
+        stateMachine = new StateMachine();
+
+        var locomotionState = new LocomotionState(this, animator);
+        var jumpState = new JumpState(this, animator);
+        var wallSlideState = new WallSlideState(this, animator);
+        var dashState = new DashState(this, animator);
+
+        At(locomotionState, jumpState, new FuncPredicate(() => jumpBufferTimer.IsRunning || !collisionChecker.IsGrounded));
+        At(jumpState, wallSlideState, new FuncPredicate(() => collisionChecker.IsTouchingWall && movement.x != 0));
+        At(wallSlideState, jumpState, new FuncPredicate(() => !collisionChecker.IsTouchingWall));
+        At(locomotionState, dashState, new FuncPredicate(() => collisionChecker.IsGrounded && dashTimer.IsRunning));
+        At(jumpState, dashState, new FuncPredicate(() => dashTimer.IsRunning));
+        At(dashState, jumpState, new FuncPredicate(() => !dashTimer.IsRunning && !collisionChecker.IsGrounded));
+        Any(locomotionState, new FuncPredicate(() => collisionChecker.IsGrounded && !jumpBufferTimer.IsRunning && !dashTimer.IsRunning));
+        stateMachine.SetState(locomotionState);
+    }
+
+    void Update()
+    {
+        stateMachine.Update();
+    }
+
+    void FixedUpdate()
+    {
+        stateMachine.FixedUpdate();
+    }
+
+    public void UpdateFacing()
+    {
+        Vector3 spriteDirection = Vector3.one;
+        spriteDirection.x = lastMovementX;
+        transform.localScale = spriteDirection;
+    }
+
+    public void UpdateMovementAnimator() => animator.SetFloat(BlendSpeed, Mathf.Abs(movement.x));
+    public void UpdateDashAnimator() => animator.SetFloat(BlendSpeed, 1f - dashTimer.Progress);
+
+    public void UpdateJumpAnimator()
+    {
+        float t = Mathf.InverseLerp(maxRiseSpeed, -maxFallSpeed, rb.linearVelocityY);
+        animator.SetFloat(BlendSpeed, ApplyPowerCurve(t, jumpAnimationPowerCurve));
+    }
+
+    public void UpdateCoyoteTime()
+    {
+        if (collisionChecker.WasGrounded && !collisionChecker.IsGrounded) coyoteTimer.Start();
+        if (!collisionChecker.WasGrounded && collisionChecker.IsGrounded) coyoteTimer.Stop();
+    }
+    
+    public void HandleGroundMovement() => rb.AddForce(GetLateralMovementForce());
+
+    public void HandleAirMovement() => rb.AddForce(GetLateralMovementForce() * airControlMultiplier);
+
+    public void HandleJump()
+    {
+        if (!jumpBufferTimer.IsRunning) return;
+
+        if (collisionChecker.IsGrounded || coyoteTimer.IsRunning)
         {
-            if (remainingDashCharges < maxDashCharges)
-                remainingDashCharges++;
-        };
+            rb.linearVelocityY = 0f;
+            rb.AddForce(Vector2.up * jumpForce, ForceMode2D.Impulse);
+            jumpBufferTimer.Stop();
+            coyoteTimer.Stop();
+        }
+    }
+
+    public void HandleWallJump()
+    {
+        if (!jumpBufferTimer.IsRunning) return;
+
+        rb.linearVelocity = Vector2.zero;
+        rb.AddForce(new Vector2(-collisionChecker.WallContactDirection * jumpForce, jumpForce), ForceMode2D.Impulse);
+        jumpBufferTimer.Stop();
+    }
+
+    public void HandleWallSlide() => rb.linearVelocityY = -wallSlideSpeed;
+
+    public void HandleGravity()
+    {
+        // increase gravity when falling (i.e. when y velocity is negative)
+        if (rb.linearVelocityY < 0f)
+        {
+            rb.AddForce((gravityMultiplier - 1f) * Physics2D.gravity.y * rb.mass * Vector2.up);
+        }
+        // increase gravity when jump is released early to cut the jump
+        else if (rb.linearVelocityY > 0f && jumpReleased)
+        {
+            rb.AddForce((gravityMultiplier - 1f) * Physics2D.gravity.y * rb.mass * Vector2.up);
+        }
+
+        // clamps y velocity
+        rb.linearVelocityY = Mathf.Clamp(rb.linearVelocityY, -maxFallSpeed, maxRiseSpeed);
+    }
+    
+    public void HandleDash()
+    {
+        rb.linearVelocity = Vector2.zero;
+        rb.gravityScale = 0f;
+        rb.AddForce(new Vector2(lastMovementX, 0) * dashForce, ForceMode2D.Impulse);
+    }
+
+    // helpers
+    Vector2 GetLateralMovementForce()
+    {
+        // movement code used from the following video: https://www.youtube.com/watch?v=KbtcEVCM7bw
+        float targetSpeed = movement.x * moveSpeed;
+        float speedDif = targetSpeed - rb.linearVelocityX;
+        float accelRate = Mathf.Abs(targetSpeed) > 0.01f ? acceleration : decceleration;
+        float speedFactor = Mathf.Pow(Mathf.Abs(speedDif) * accelRate, velPower) * Mathf.Sign(speedDif);
+
+        return speedFactor * Vector2.right;
+    }
+
+    private float ApplyPowerCurve(float t, float power)
+    {
+        float centered = t * 2f - 1f;
+        return Mathf.Sign(centered) * Mathf.Pow(Mathf.Abs(centered), power) * 0.5f + 0.5f;
+    }
+
+    private void At(IState from, IState to, IPredicate condition) => stateMachine.AddTransition(from, to, condition);
+    private void Any(IState to, IPredicate condition) => stateMachine.AddAnyTransition(to, condition);
+
+    private void OnMove(Vector2 inputDir) 
+    {
+        movement = inputDir;
+        lastMovementX = inputDir.x + lastMovementX * (1 - Mathf.Abs(inputDir.x));
+    }
+
+    private void OnJump(bool performed)
+    {
+        if (performed && !jumpBufferTimer.IsRunning) jumpBufferTimer.Start();
+        else jumpBufferTimer.Stop();
+
+        jumpReleased = !performed;
+    }
+
+    void OnDash()
+    {
+        if (!dashTimer.IsRunning && !dashCooldownTimer.IsRunning)
+        {
+            dashTimer.Start();
+        } 
     }
 
     void OnEnable()
@@ -96,165 +227,5 @@ public class PlayerController : MonoBehaviour
         input.Move -= OnMove;
         input.Jump -= OnJump;
         input.Dash -= OnDash;
-    }
-
-    void Update()
-    {
-        UpdateGrounded();
-        UpdateWallContact();
-    }
-
-    void FixedUpdate()
-    {
-        HandleMovement();
-        HandleJump();
-        HandleGravity();
-        HandleWallSlide();
-    }
-
-    private void UpdateGrounded()
-    {
-        // store previous grounded state
-        bool wasGrounded = isGrounded;
-        // test if current frame is grounded
-        isGrounded = Physics2D.OverlapBox(groundCheckTransform.position, groundCheckSize, 0f, groundLayer);
-
-        // start and stop coyote time depending on the grounded state
-        if (wasGrounded && !isGrounded) coyoteTimer.Start();
-        if (!wasGrounded && isGrounded)
-        {
-            remainingDashCharges = maxDashCharges; // refill on landing
-            coyoteTimer.Stop();
-        }
-    }
-
-    private void UpdateWallContact()
-    {
-        bool touchingLeft = Physics2D.OverlapBox(wallCheckLeft.position, wallCheckSize, 0f, groundLayer);
-        bool touchingRight = Physics2D.OverlapBox(wallCheckRight.position, wallCheckSize, 0f, groundLayer);
-
-        // get the direction of wall contact -1 for left and 1 for right and 0 if not touching any walls
-        wallContactDirection = touchingLeft ? -1 : touchingRight ? 1 : 0;
-
-        // wall sliding only happens if not on the ground and player is actively pushing against the wall
-        isWallSliding = !isGrounded                                 // is in the air
-            && wallContactDirection != 0                            // touching a wall
-            && moveInput.x == wallContactDirection;     // pushing against wall
-    }
-
-    private void OnMove(Vector2 dir) => moveInput = dir;
-
-    private void OnJump(bool pressed)
-    {
-        if (pressed)
-        {
-            jumpBufferTimer.Start();
-            jumpReleased = false;
-        }
-        else
-        {
-            jumpBufferTimer.Stop();
-            jumpReleased = true;
-        }
-    }
-
-    private void OnDash()
-    {
-        Debug.Log("dash");
-        bool airDashAllowed = canAirDash || isGrounded;
-        if (remainingDashCharges <= 0 || isDashing || !airDashAllowed) return;
-
-        isDashing = true;
-        remainingDashCharges--;
-
-        // Dash in the direction of movement input, or facing direction if idle
-        dashDirection = moveInput.sqrMagnitude > 0.01f
-            ? moveInput.normalized
-            : new Vector2(wallContactDirection != 0 ? -wallContactDirection : 1f, 0f);
-
-        rb.linearVelocity = Vector2.zero;
-        rb.gravityScale = 0f;
-        rb.AddForce(dashDirection * dashForce, ForceMode2D.Impulse);
-
-        dashDurationTimer.Start();
-        dashCooldownTimer.Start();
-    }
-
-    private void HandleMovement()
-    {
-        if (isDashing) return;
-        // movement code used from the following video: https://www.youtube.com/watch?v=KbtcEVCM7bw
-        float targetSpeed = wallJumpInputLockTimer.IsRunning ? 0f : moveInput.x * moveSpeed;
-        float speedDif = targetSpeed - rb.linearVelocityX;
-        float accelRate = Mathf.Abs(targetSpeed) > 0.01f ? acceleration : decceleration;
-        float movement = Mathf.Pow(Mathf.Abs(speedDif) * accelRate, velPower) * Mathf.Sign(speedDif);
-
-        // reduces lateral movement if player is in the air
-        if (!isGrounded) movement *= airControlMultiplier;
-
-        rb.AddForce(movement * Vector2.right);
-    }
-
-    private void HandleJump()
-    {
-        if (!jumpBufferTimer.IsRunning) return;
-
-        if (isWallSliding)
-        {
-            // applies an impulse opposite of wall contact direction
-            rb.linearVelocity = Vector2.zero;
-            // rb.linearVelocityY = 0f;
-            rb.AddForce(new Vector2(-wallContactDirection * wallJumpForceX, wallJumpForceY), ForceMode2D.Impulse);
-            jumpReleased = false;
-            jumpBufferTimer.Stop();
-            wallJumpInputLockTimer.Start();
-            return;
-        }
-
-        // jump on the ground
-        if (isGrounded || coyoteTimer.IsRunning)
-        {
-            // applies an impulse up
-            rb.linearVelocityY = 0f;
-            rb.AddForce(Vector2.up * jumpForce, ForceMode2D.Impulse);
-            jumpReleased = false;
-            jumpBufferTimer.Stop();
-            coyoteTimer.Stop();
-        }
-    }
-
-    private void HandleGravity()
-    {
-        if (isWallSliding || isDashing) return;
-
-        // increase gravity when falling (i.e. when y velocity is negative)
-        if (rb.linearVelocityY < 0f)
-        {
-            rb.AddForce((fallingGravityMultiplier - 1f) * Physics2D.gravity.y * rb.mass * Vector2.up);
-        }
-        // increase gravity when jump is released early to cut the jump
-        else if (rb.linearVelocityY > 0f && jumpReleased)
-        {
-            rb.AddForce((jumpCutGravityMultiplier - 1f) * Physics2D.gravity.y * rb.mass * Vector2.up);
-        }
-    }
-
-    private void HandleWallSlide()
-    {
-        if (isDashing) return;
-
-        if (isWallSliding && rb.linearVelocityY < wallSlideSpeed)
-            rb.linearVelocityY = wallSlideSpeed;
-    }
-
-    void OnDrawGizmosSelected()
-    {
-        Gizmos.color = Color.red;
-        if (groundCheckTransform != null)
-            Gizmos.DrawWireCube(groundCheckTransform.position, groundCheckSize);
-
-        Gizmos.color = Color.blue;
-        if (wallCheckLeft != null) Gizmos.DrawWireCube(wallCheckLeft.position, wallCheckSize);
-        if (wallCheckRight != null) Gizmos.DrawWireCube(wallCheckRight.position, wallCheckSize);
     }
 }

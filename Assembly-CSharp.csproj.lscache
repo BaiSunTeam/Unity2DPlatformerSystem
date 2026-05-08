@@ -54,10 +54,23 @@ Assets/
  MyTools/Setup.cs
  Project/Scripts/
   Input/InputReader.cs
-  Player/PlayerController.cs
+  Player/
+   PlatformCollisionChecker.cs
+   PlayerController.cs
+   PlayerControllerOLD.cs
   StateMachine/
    BaseState.cs
-   IState.cs
+   Interfaces/
+    IPredicate.cs
+    IState.cs
+    ITransition.cs
+   StateMachine.cs
+   States/
+    DashState.cs
+    JumpState.cs
+    LocomotionState.cs
+    WallSlideState.cs
+   Transition.cs
  Project/Settings/InputSystem_Actions.cs
 Temp/obj/Assembly-CSharp/.NETStandard,Version=v2.1.AssemblyAttributes.cs
 
@@ -332,6 +345,7 @@ Library/PackageCache/
  com.unity.visualscripting@eb6004dcc707/Runtime/VisualScripting.Flow/Dependencies/NCalc/Unity.VisualScripting.Antlr3.Runtime.dll
 Library/ScriptAssemblies/
  ImprovedTimers.dll
+ KBCore.Refs.dll
  PPv2URPConverters.dll
  PsdPlugin.dll
  Unity.2D.Animation.Editor.dll
